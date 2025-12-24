@@ -1,10 +1,19 @@
-import React from 'react';
-import ReactDOM from 'react-dom/client';
-import App from './App.jsx';
-import './index.css';
+import React from "react";
+import { BoardProvider } from "./context/BoardProvider.jsx";
+import Header from "./components/Header.jsx";
+import Toolbar from "./components/Toolbar.jsx";
+import Board from "./components/Board.jsx";
 
-ReactDOM.createRoot(document.getElementById('root')).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>
-);
+export default function App() {
+  return (
+    <BoardProvider>
+      <div className="min-h-screen flex flex-col">
+        <Header />
+        <Toolbar />
+        <main className="flex-1 p-4">
+          <Board />
+        </main>
+      </div>
+    </BoardProvider>
+  );
+}

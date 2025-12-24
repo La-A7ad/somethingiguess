@@ -1,10 +1,13 @@
 // src/services/api.js
-import { nanoid } from "nanoid";
 import { STORAGE_KEYS, loadJson, saveJson } from "./storage.js";
 import { nowIso } from "../utils/helpers.js";
 
 const IS_TEST =
   typeof process !== "undefined" && process.env?.NODE_ENV === "test";
+
+function genId(prefix = "id") {
+  return `${prefix}_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`;
+}
 
 const defaultServerState = {
   lists: { byId: {}, allIds: [] },
@@ -71,9 +74,18 @@ const buildHandlers = (rest) => [
     await withDelay();
     if (shouldFail())
       return res(ctx.status(500), ctx.json({ error: "server_failure" }));
-    const { list } = await req.json();
+
+    const body = await req.json().catch(() => ({}));
+    const list = body?.list || {};
     const state = loadServerState();
-    const next = bump({ ...list, archived: false, cardIds: list.cardIds || [] });
+
+    const next = bump({
+      ...list,
+      id: list.id || genId("list"),
+      archived: false,
+      cardIds: list.cardIds || [],
+    });
+
     state.lists.byId[next.id] = next;
     if (!state.lists.allIds.includes(next.id)) state.lists.allIds.push(next.id);
     saveServerState(state);
@@ -84,10 +96,12 @@ const buildHandlers = (rest) => [
     await withDelay();
     if (shouldFail())
       return res(ctx.status(500), ctx.json({ error: "server_failure" }));
+
     const { id } = req.params;
     const { patch, baseVersion } = await req.json();
     const state = loadServerState();
     const current = state.lists.byId[id];
+
     if (!current) return res(ctx.status(404), ctx.json({ error: "not_found" }));
     if ((current.version || 0) > (baseVersion || 0))
       return conflict(res, ctx, "list", id, current);
@@ -102,9 +116,12 @@ const buildHandlers = (rest) => [
     await withDelay();
     if (shouldFail())
       return res(ctx.status(500), ctx.json({ error: "server_failure" }));
-    const { card } = await req.json();
+
+    const body = await req.json().catch(() => ({}));
+    const card = body?.card || {};
     const state = loadServerState();
-    const next = bump(card);
+
+    const next = bump({ ...card, id: card.id || genId("card") });
     state.cards.byId[next.id] = next;
 
     // ensure card exists in its list
@@ -124,10 +141,12 @@ const buildHandlers = (rest) => [
     await withDelay();
     if (shouldFail())
       return res(ctx.status(500), ctx.json({ error: "server_failure" }));
+
     const { id } = req.params;
     const { patch, baseVersion } = await req.json();
     const state = loadServerState();
     const current = state.cards.byId[id];
+
     if (!current) return res(ctx.status(404), ctx.json({ error: "not_found" }));
     if ((current.version || 0) > (baseVersion || 0))
       return conflict(res, ctx, "card", id, current);
@@ -142,6 +161,7 @@ const buildHandlers = (rest) => [
     await withDelay();
     if (shouldFail())
       return res(ctx.status(500), ctx.json({ error: "server_failure" }));
+
     const { id } = req.params;
     const { card } = await req.json();
     const state = loadServerState();
@@ -156,6 +176,7 @@ const buildHandlers = (rest) => [
     await withDelay();
     if (shouldFail())
       return res(ctx.status(500), ctx.json({ error: "server_failure" }));
+
     const { id } = req.params;
     const state = loadServerState();
 
@@ -178,10 +199,13 @@ const buildHandlers = (rest) => [
     await withDelay();
     if (shouldFail())
       return res(ctx.status(500), ctx.json({ error: "server_failure" }));
+
     const { cardId, fromListId, toListId, toIndex, baseCardVersion } =
       await req.json();
+
     const state = loadServerState();
     const card = state.cards.byId[cardId];
+
     if (!card) return res(ctx.status(404), ctx.json({ error: "not_found" }));
     if ((card.version || 0) > (baseCardVersion || 0))
       return conflict(res, ctx, "card", cardId, card);
@@ -231,7 +255,6 @@ let started = false;
 /**
  * Fallback mock "server" for when MSW fails to start:
  * patches window.fetch for /api/* routes.
- * Uses the same storage/state + conflict rules as the MSW handlers.
  */
 function startFallbackMockServer() {
   if (typeof window === "undefined") return;
@@ -289,8 +312,8 @@ function startFallbackMockServer() {
         const { list } = body || {};
         const state = loadServerState();
         const next = bump({
-          ...list,
-          id: list?.id || nanoid(),
+          ...(list || {}),
+          id: list?.id || genId("list"),
           archived: false,
           cardIds: list?.cardIds || [],
         });
@@ -315,7 +338,7 @@ function startFallbackMockServer() {
             serverEntity: current,
           });
         }
-        const next = bump({ ...current, ...patch });
+        const next = bump({ ...current, ...(patch || {}) });
         state.lists.byId[id] = next;
         saveServerState(state);
         return json(200, { list: next });
@@ -325,7 +348,7 @@ function startFallbackMockServer() {
       if (method === "POST" && parts[0] === "cards" && parts.length === 1) {
         const { card } = body || {};
         const state = loadServerState();
-        const next = bump({ ...card, id: card?.id || nanoid() });
+        const next = bump({ ...(card || {}), id: card?.id || genId("card") });
         state.cards.byId[next.id] = next;
 
         const list = state.lists.byId[next.listId];
@@ -355,7 +378,7 @@ function startFallbackMockServer() {
             serverEntity: current,
           });
         }
-        const next = bump({ ...current, ...patch });
+        const next = bump({ ...current, ...(patch || {}) });
         state.cards.byId[id] = next;
         saveServerState(state);
         return json(200, { card: next });
@@ -367,7 +390,7 @@ function startFallbackMockServer() {
         const { card } = body || {};
         const state = loadServerState();
         const current = state.cards.byId[id] || card;
-        const next = bump({ ...current, ...card, id });
+        const next = bump({ ...current, ...(card || {}), id });
         state.cards.byId[id] = next;
         saveServerState(state);
         return json(200, { card: next });
@@ -464,7 +487,6 @@ export async function startMockServer() {
   if (typeof window === "undefined") return;
   if (IS_TEST) return;
 
-  // Avoid starting MSW when not on localhost (optional safety)
   const host = window.location?.hostname || "";
   const isLocalhost = host === "localhost" || host === "127.0.0.1";
   if (!isLocalhost) return;
